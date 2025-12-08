@@ -8,6 +8,18 @@ const gpa = std.heap.c_allocator;
 
 var remote: Remote = undefined;
 
+const usage =
+    \\Usage: whet [options]
+    \\
+    \\   Sharpen your Mezzaluna via quick iterations.
+    \\
+    \\Options:
+    \\   -c, --code           One shot sending code to Mezzaluna
+    \\   -f, --follow-log     Follow the log as it grows
+    \\   -h, --help           Print this help and exit
+    \\
+;
+
 fn loop(input: bool) !void {
   var pollfds: [2]std.posix.pollfd = undefined;
 
@@ -70,14 +82,21 @@ pub fn main() !void {
     // long options
     code: ?[]const u8 = null,
     @"follow-log": bool = false,
+    help: bool = false,
 
     // short-hand options
     pub const shorthands = .{
       .c = "code",
       .f = "follow-log",
+      .h = "help",
     };
   }, gpa, .print) catch return;
   defer options.deinit();
+
+  if (options.options.help) {
+    try std.fs.File.stdout().writeAll(usage);
+    std.process.exit(1);
+  }
 
   // connect to the compositor
   remote = Remote.init();
