@@ -39,10 +39,9 @@ pub fn init() Remote {
 
   self.remote_lua = self.remote_lua_manager.?.getRemote() catch util.oom();
   if (self.remote_lua) |rl| {
-    std.log.info("yayayy", .{});
     rl.setListener(?*anyopaque, handleRemote, null);
   } else {
-    std.log.err("no luck", .{});
+    util.fatal("failed to setup the remote listener", .{});
   }
 
   return self;
