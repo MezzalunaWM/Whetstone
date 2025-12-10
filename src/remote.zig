@@ -39,7 +39,7 @@ pub fn init() Remote {
 
   self.remote_lua = self.remote_lua_manager.?.getRemote() catch util.oom();
   if (self.remote_lua) |rl| {
-    rl.setListener(?*anyopaque, handleRemote, null);
+    rl.setListener(*Remote, handleRemote, @constCast(&self));
   } else {
     util.fatal("failed to setup the remote listener", .{});
   }
@@ -47,35 +47,12 @@ pub fn init() Remote {
   return self;
 }
 
-pub fn flush(self: *Remote) !void {
-  while (true) {
-    while (!self.display.prepareRead()) {
-      const errno = self.display.dispatchPending();
-      if (errno != .SUCCESS) {
-        util.fatal("failed to dispatch pending wayland events: E{s}", .{@tagName(errno)});
-      }
-    }
-
-    const errno = self.display.flush();
-    switch (errno) {
-      .SUCCESS => return,
-      .PIPE => {
-        // libwayland uses this error to indicate that the wayland server
-        // closed its side of the wayland socket. We want to continue to
-        // read any buffered messages from the server though as there is
-        // likely a protocol error message we'd like libwayland to log.
-        _ = self.display.readEvents();
-        util.fatal("connection to wayland server unexpectedly terminated", .{});
-      },
-      else => {
-        util.fatal("failed to flush wayland requests: E{s}", .{@tagName(errno)});
-      },
-    }
-  }
-}
-
 pub fn deinit(self: *Remote) void {
   self.registry.destroy();
+  if (self.remote_lua_manager) |rl_manager| rl_manager.destroy();
+  if (self.remote_lua) |rl| rl.destroy();
+  if (self.compositor) |comp| comp.destroy();
+  self.display.disconnect();
 }
 
 fn registry_listener(
@@ -93,7 +70,7 @@ fn registry_event(registry: *wl.Registry, event: wl.Registry.Event, remote: *Rem
     .global => |ev| {
       if (std.mem.orderZ(u8, ev.interface, wl.Compositor.interface.name) == .eq) {
         const ver = 1;
-        if (ev.version < 1) {
+        if (ev.version < ver) {
           util.fatal("advertised wl_compositor version too old, version {} required", .{ver});
         }
         remote.compositor = try registry.bind(ev.name, wl.Compositor, ver);
@@ -109,12 +86,10 @@ fn registry_event(registry: *wl.Registry, event: wl.Registry.Event, remote: *Rem
   }
 }
 
-// FIXME: this doesn't actually handle events for some reason and we currently
-// just read from the socket directly
-fn handleRemote(_: *mez.RemoteLuaV1, event: mez.RemoteLuaV1.Event, _: ?*anyopaque) void {
+fn handleRemote(_: *mez.RemoteLuaV1, event: mez.RemoteLuaV1.Event, _: *Remote) void {
   switch (event) {
     .new_log_entry => |e| {
-      std.log.info("{s}", .{e.text});
+      std.debug.print("\r{s}\r\n", .{e.text});
     },
   }
 }

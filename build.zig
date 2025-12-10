@@ -15,6 +15,7 @@ pub fn build(b: *std.Build) void {
   const wlroots = b.dependency("wlroots", .{}).module("wlroots");
   const zlua = b.dependency("zlua", .{}).module("zlua");
   const zargs = b.dependency("args", .{ .target = target, .optimize = optimize }).module("args");
+  const linenoize = b.dependency("linenoize", .{}).module("linenoise");
 
   wlroots.addImport("wayland", wayland);
   wlroots.resolved_target = target;
@@ -35,6 +36,7 @@ pub fn build(b: *std.Build) void {
   whet.root_module.addImport("wlroots", wlroots);
   whet.root_module.addImport("zlua", zlua);
   whet.root_module.addImport("args", zargs);
+  whet.root_module.addImport("linenoize", linenoize);
 
   whet.root_module.linkSystemLibrary("wayland-client", .{});
 

@@ -1,5 +1,6 @@
 const std = @import("std");
 const argsParser = @import("args");
+const Linenoize = @import("linenoize").Linenoise;
 
 const util = @import("util.zig");
 const Remote = @import("remote.zig");
@@ -20,60 +21,28 @@ const usage =
     \\
 ;
 
-fn loop(input: bool) !void {
-  var pollfds: [2]std.posix.pollfd = undefined;
+fn inputThreadRun() !void {
+  const ln: *Linenoize = @constCast(&Linenoize.init(gpa));
+  defer ln.deinit();
 
-  pollfds[0] = .{ // wayland fd
-    .fd = remote.display.getFd(),
-    .events = std.posix.POLL.IN,
-    .revents = 0,
-  };
-  if (input) {
-    pollfds[1] = .{ // stdin
-      .fd = std.posix.STDIN_FILENO,
-      .events = std.posix.POLL.IN,
-      .revents = 0,
-    };
-  }
-
-  var buf: [2]u8 = undefined;
-  var stdout_writer = std.fs.File.stdout().writer(&buf);
-  const stdout = &stdout_writer.interface;
   while (true) {
-    if (input) {
-      try stdout.print("> ", .{});
-      try stdout.flush();
+    const in = ln.linenoise("> ") catch |err| switch (err) {
+      error.CtrlC => std.process.exit(130),
+      else => return err,
+    } orelse continue;
+    defer gpa.free(in);
+
+    if (remote.remote_lua) |rl| {
+      const w_sentinel = gpa.allocSentinel(u8, in.len, 0) catch util.oom();
+      defer gpa.free(w_sentinel);
+      std.mem.copyForwards(u8, w_sentinel, in[0..in.len]);
+
+      rl.pushLua(w_sentinel);
+
+      const err = remote.display.flush();
+      if (err != .SUCCESS) util.fatal("lost connection to the wayland socket", .{});
     }
-
-    _ = std.posix.poll(&pollfds, -1) catch |err| {
-      util.fatal("poll() failed: {s}", .{@errorName(err)});
-    };
-
-    for (pollfds) |fd| {
-      if (fd.revents & std.posix.POLL.IN == 1) {
-        if (fd.fd == std.posix.STDIN_FILENO) {
-          var in_buf: [1024]u8 = undefined;
-          const len = std.posix.read(fd.fd, &in_buf) catch 0;
-
-          if (len == 0) {
-            try stdout.print("\n", .{});
-            continue;
-          }
-
-          if (in_buf[len - 1] == '\n') in_buf[len - 1] = 0 else in_buf[len] = 0;
-          if (remote.remote_lua) |rl| rl.pushLua(@ptrCast(in_buf[0..len].ptr));
-        }
-
-        // FIXME: we really shouldn't be reading from the socket
-        if (fd.fd == remote.display.getFd()) {
-          var in_buf: [1024]u8 = undefined;
-          const len = std.posix.read(fd.fd, &in_buf) catch 0;
-          std.debug.print("\n{s}", .{in_buf[0..len]});
-        }
-      }
-    }
-
-    try remote.flush();
+    try ln.history.add(in);
   }
 }
 
@@ -101,13 +70,16 @@ pub fn main() !void {
   // connect to the compositor
   remote = Remote.init();
   defer remote.deinit();
+  var input_thread: std.Thread = undefined;
 
   // handle options
   if (options.options.code) |c| {
     remote.remote_lua.?.pushLua(@ptrCast(c[0..].ptr));
-  } else if (options.options.@"follow-log") {
-    try loop(false);
-  } else {
-    try loop(true);
+  } else if (!options.options.@"follow-log") {
+    input_thread = try .spawn(.{}, inputThreadRun, .{});
   }
+
+  while (remote.display.dispatch() == .SUCCESS) {}
+
+  input_thread.join();
 }
