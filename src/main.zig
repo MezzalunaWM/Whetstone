@@ -78,6 +78,9 @@ pub fn main() !void {
     remote.remote_lua.?.pushLua(@ptrCast(c[0..].ptr));
     _ = remote.display.flush();
     _ = remote.display.dispatch();
+    const stdout = @constCast(&std.fs.File.stdout().writer(@constCast(&[_]u8{})).interface);
+    try stdout.writeAll("\r");
+    try stdout.flush();
     return;
   } else if (!options.options.@"follow-log") {
     input_thread = try .spawn(.{}, inputThreadRun, .{});
