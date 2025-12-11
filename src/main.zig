@@ -7,6 +7,7 @@ const Remote = @import("remote.zig");
 
 const gpa = std.heap.c_allocator;
 
+pub const prompt = "> ";
 var remote: Remote = undefined;
 
 const usage =
@@ -26,8 +27,8 @@ fn inputThreadRun() !void {
   defer ln.deinit();
 
   while (true) {
-    const in = ln.linenoise("> ") catch |err| switch (err) {
-      error.CtrlC => std.process.exit(130),
+    const in = ln.linenoise(prompt) catch |err| switch (err) {
+      error.CtrlC => std.process.exit(0),
       else => return err,
     } orelse continue;
     defer gpa.free(in);

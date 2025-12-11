@@ -7,6 +7,7 @@ const wl = wayland.client.wl;
 const mez = wayland.client.zmez;
 
 const util = @import("util.zig");
+const prompt = @import("main.zig").prompt;
 
 display: *wl.Display,
 registry: *wl.Registry,
@@ -89,7 +90,12 @@ fn registry_event(registry: *wl.Registry, event: wl.Registry.Event, remote: *Rem
 fn handleRemote(_: *mez.RemoteLuaV1, event: mez.RemoteLuaV1.Event, _: *Remote) void {
   switch (event) {
     .new_log_entry => |e| {
-      std.debug.print("\r{s}\r\n", .{e.text});
+      const buffer: [1024]u8 = undefined;
+      const stdout = @constCast(&std.fs.File.stdout().writer(@constCast(&buffer)).interface);
+      // HACK: to make the prompt look correct we just redraw it after logging
+      // an entry.
+      stdout.print("\r{s}\r\n" ++ prompt, .{e.text}) catch {};
+      stdout.flush() catch {};
     },
   }
 }
