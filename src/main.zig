@@ -76,6 +76,9 @@ pub fn main() !void {
   // handle options
   if (options.options.code) |c| {
     remote.remote_lua.?.pushLua(@ptrCast(c[0..].ptr));
+    _ = remote.display.flush();
+    _ = remote.display.dispatch();
+    return;
   } else if (!options.options.@"follow-log") {
     input_thread = try .spawn(.{}, inputThreadRun, .{});
   }
