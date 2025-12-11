@@ -9,6 +9,8 @@ const mez = wayland.client.zmez;
 const util = @import("util.zig");
 const prompt = @import("main.zig").prompt;
 
+const gpa = std.heap.c_allocator;
+
 display: *wl.Display,
 registry: *wl.Registry,
 compositor: ?*wl.Compositor,
@@ -92,9 +94,11 @@ fn handleRemote(_: *mez.RemoteLuaV1, event: mez.RemoteLuaV1.Event, _: *Remote) v
     .new_log_entry => |e| {
       const buffer: [1024]u8 = undefined;
       const stdout = @constCast(&std.fs.File.stdout().writer(@constCast(&buffer)).interface);
+      const str = std.mem.replaceOwned(u8, gpa, std.mem.span(e.text), "\n", "\r\n") catch util.oom();
+      defer gpa.free(str);
       // HACK: to make the prompt look correct we just redraw it after logging
       // an entry.
-      stdout.print("\r{s}\r\n" ++ prompt, .{e.text}) catch {};
+      stdout.print("\r{s}\r\n" ++ prompt, .{str}) catch {};
       stdout.flush() catch {};
     },
   }
